@@ -1,0 +1,23 @@
+{
+  "name": "qdmetrics",
+  "version": "0.0.1",
+  "description": "Nodejs program to respond to prometheus scrape request and query dispatch router network",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ErnieAllen/qdmetrics.git"
+  },
+  "author": "Apache Qpid",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/ErnieAllen/qdmetrics/issues"
+  },
+  "homepage": "https://github.com/ErnieAllen/qdmetrics#readme",
+  "dependencies": {
+    "rhea": "^0.3.9",
+    "ws": "^6.1.3"
+  }
+}
