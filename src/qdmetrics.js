@@ -14,6 +14,17 @@
  * limitations under the License.
  */
 
+'use strict';
+
+const register = require('../').register;
+
+const Gauge = require('../').Gauge;
+const g = new Gauge({
+  name: 'qdmetrics_acceptedDeliveries',
+  help: 'Sum of accepted deleiveries for all routers in the network',
+  labelNames: ['router']
+});
+
 const management = require('./amqp/management');
 const Management = new management('http:');
 
@@ -29,35 +40,27 @@ let connectOptions = {
   port: 5673,
   username: '',
   password: '',
-  reconnect: true
+  reconnect: true,
+  properties: { app_identifier: 'Prometheus scape handler' }
 };
 // TODO: which stats to fetch should be defined in config file
 let routerResults = { acceptedDeliveries: -1 };
 
-// listen for scrape requests
 const server = http.createServer();
+// listen for scrape requests
 server.on('request', async (req, res) => {
   if (req.url === '/metrics') {
-    if (routerId !== '') {
-      try {
-        routerResults = await getStats();
-        res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
-        res.write('# HELP qdmetrics_acceptedDeliveries Accepted Deliveries.\n');
-        res.write('# TYPE qdmetrics_acceptedDeliveries gauge\n');
-        res.write(`qdmetrics_acceptedDeliveries ${routerResults.acceptedDeliveries}\n`);
-        res.end();
-        console.log('successfully serviced scrape request');
-      } catch (e) {
-        console.log(e);
-      }
-    } else {
-      console.log('received scrape request but not connected to router');
+    try {
+      routerResults = await getStats();
+      g.set({ router: utils.nameFromId(routerId) }, routerResults.acceptedDeliveries);
+      res.writeHead(200, { 'Content-Type': register.contentType });
+      res.end(register.metrics());
+      console.log('handled prometheus scape request at /metrics')
+    } catch (e) {
+      console.log(e);
     }
-  } else {
-    console.log(`received non-scrape request ${req.url}`);
   }
-})
-server.listen(scrapePort);
+});
 
 // connect to a router
 Management.connection.connect(connectOptions).then(function () {
@@ -68,6 +71,7 @@ Management.connection.connect(connectOptions).then(function () {
     .then(function () {
       routerId = Management.topology.getConnectedNode();
       console.log(`connected to router named "${utils.nameFromId(routerId)}"`);
+      server.listen(scrapePort);
     }, function (e) {
       console.log(e);
     });
@@ -80,12 +84,16 @@ function getStats() {
   return new Promise(function (resolve, reject) {
     const entity = 'router',
       attributes = [];
-    Management.connection.sendQuery(routerId, entity, attributes)
-      .then(function (r) {
-        let response = r.response;
-        resolve(utils.flatten(response.attributeNames, response.results[0]));
-      }, function (e) {
-        reject(e);
-      });
+    try {
+      Management.connection.sendQuery(routerId, entity, attributes)
+        .then(function (r) {
+          let response = r.response;
+          resolve(utils.flatten(response.attributeNames, response.results[0]));
+        }, function (e) {
+          reject(e);
+        });
+    } catch (e) {
+      reject(e);
+    }
   })
 }
