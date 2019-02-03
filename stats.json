@@ -1,0 +1,25 @@
+{
+  "stats": [
+    {
+      "entity": "router",
+      "attributes": [
+        "deliveriesEgress",
+        "addrCount",
+        "connectionCount"
+      ]
+    },
+    {
+      "entity": "logStats",
+      "alias": "module",
+      "attributes": [
+        "infoCount",
+        "debugCount",
+        "errorCount",
+        "criticalCount",
+        "noticeCount",
+        "traceCount",
+        "warningCount"
+      ]
+    }
+  ]
+}
