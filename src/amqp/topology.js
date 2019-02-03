@@ -14,38 +14,46 @@
  * limitations under the License.
  */
 
-/* global Promise */
-
 class Topology {
   constructor(connectionManager) {
     this.connection = connectionManager;
   }
 
   getConnectedNode() {
-    let parts = this.connection.getReceiverAddress().split('/');
-    parts[parts.length - 1] = '$management';
-    return parts.join('/');
+    let parts = this.connection.getReceiverAddress().split("/");
+    parts[parts.length - 1] = "$management";
+    return parts.join("/");
   }
   getNodeList() {
     return new Promise((function (resolve, reject) {
       this.connection.sendMgmtQuery("GET-MGMT-NODES").then(
-        function (results) {
+        (function (results) {
           let routerIds = results.response;
           if (
             Object.prototype.toString.call(routerIds) === "[object Array]"
           ) {
             // if there is only one node, it will not be returned
             if (routerIds.length === 0) {
-              var parts = this.connection.getReceiverAddress().split("/");
-              parts[parts.length - 1] = "$management";
-              routerIds.push(parts.join("/"));
+              routerIds.push(this.getConnectedNode());
             }
             resolve(routerIds);
           } else {
-            reject('GET-MGMT-NODES returned non-array');
+            reject("GET-MGMT-NODES returned non-array");
           }
-        })
-    }).bind(this))
+        }).bind(this));
+    }).bind(this));
   }
+
+  get(ids, entity, attributes) {
+    return new Promise((function (resolve, reject) {
+      Promise.all(ids.map((id) => this.connection.sendQuery(id, entity, attributes)))
+        .then(function (allResults) {
+          resolve(allResults);
+        }, function (firstError) {
+          reject(firstError);
+        });
+    }).bind(this));
+  }
+
 }
 module.exports = Topology;

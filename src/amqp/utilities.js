@@ -24,14 +24,14 @@ var utils = {
     });
   },
   isConsole: function (d) {
-    return (d && d.properties && d.properties.console_identifier === 'Dispatch console');
+    return (d && d.properties && d.properties.console_identifier === "Dispatch console");
   },
   isArtemis: function (d) {
-    return (d.nodeType === 'route-container' || d.nodeType === 'on-demand') && (d.properties && d.properties.product === 'apache-activemq-artemis');
+    return (d.nodeType === "route-container" || d.nodeType === "on-demand") && (d.properties && d.properties.product === "apache-activemq-artemis");
   },
 
   isQpid: function (d) {
-    return (d.nodeType === 'route-container' || d.nodeType === 'on-demand') && (d.properties && d.properties.product === 'qpid-cpp');
+    return (d.nodeType === "route-container" || d.nodeType === "on-demand") && (d.properties && d.properties.product === "qpid-cpp");
   },
   flatten: function (attributes, result) {
     if (!attributes || !result)
@@ -62,46 +62,43 @@ var utils = {
   },
   identity_clean: function (identity) {
     if (!identity)
-      return '-';
-    var pos = identity.indexOf('/');
+      return "-";
+    var pos = identity.indexOf("/");
     if (pos >= 0)
       return identity.substring(pos + 1);
     return identity;
   },
   addr_text: function (addr) {
     if (!addr)
-      return '-';
+      return "-";
     if (addr[0] === addr[0].toLowerCase())
       return addr;
-    if (addr[0] == 'M')
+    if (addr[0] == "M")
       return addr.substring(2);
     else
       return addr.substring(1);
   },
   addr_class: function (addr) {
-    if (!addr) return '-';
-    if (addr[0] == 'M') return 'mobile';
-    if (addr[0] == 'R') return 'router';
-    if (addr[0] == 'A') return 'area';
-    if (addr[0] == 'L') return 'local';
-    if (addr[0] == 'H') return 'edge';
-    if (addr[0] == 'C') return 'link-incoming';
-    if (addr[0] == 'E') return 'link-incoming';
-    if (addr[0] == 'D') return 'link-outgoing';
-    if (addr[0] == 'F') return 'link-outgoing';
-    if (addr[0] == 'T') return 'topo';
-    if (addr === 'queue.waypoint') return 'mobile';
-    if (addr === 'link') return 'link';
-    return 'unknown: ' + addr[0];
+    if (!addr) return "-";
+    if (addr[0] == "M") return "mobile";
+    if (addr[0] == "R") return "router";
+    if (addr[0] == "A") return "area";
+    if (addr[0] == "L") return "local";
+    if (addr[0] == "H") return "edge";
+    if (addr[0] == "C") return "link-incoming";
+    if (addr[0] == "E") return "link-incoming";
+    if (addr[0] == "D") return "link-outgoing";
+    if (addr[0] == "F") return "link-outgoing";
+    if (addr[0] == "T") return "topo";
+    if (addr === "queue.waypoint") return "mobile";
+    if (addr === "link") return "link";
+    return "unknown: " + addr[0];
   },
   humanify: function (s) {
     if (!s || s.length === 0)
       return s;
-    var t = s.charAt(0).toUpperCase() + s.substr(1).replace(/[A-Z]/g, ' $&');
-    return t.replace('.', ' ');
-  },
-  isMSIE: function () {
-    return (document.documentMode || /Edge/.test(navigator.userAgent));
+    var t = s.charAt(0).toUpperCase() + s.substr(1).replace(/[A-Z]/g, " $&");
+    return t.replace(".", " ");
   },
   // return the value for a field
   valFor: function (aAr, vAr, key) {
@@ -130,25 +127,25 @@ var utils = {
     //  amqp:/_edge/routerName/$management'
     //  amqp:/_edge/router/Name/$management'
 
-    var parts = id.split('/');
+    var parts = id.split("/");
     // remove $management
     parts.pop();
 
     // remove the area if present
-    if (parts[2] === '0')
+    if (parts[2] === "0")
       parts.splice(2, 1);
 
     // remove amqp/(_topo or _edge)
     parts.splice(0, 2);
-    return parts.join('/');
+    return parts.join("/");
   },
 
   // construct a router id given a router name and type (_topo or _edge)
   idFromName: function (name, type) {
-    const parts = ['amqp:', type, name, '$management'];
-    if (type === '_topo')
-      parts.splice(2, 0, '0');
-    return parts.join('/');
+    const parts = ["amqp:", type, name, "$management"];
+    if (type === "_topo")
+      parts.splice(2, 0, "0");
+    return parts.join("/");
   },
 
   // calculate the average rate of change per second for a list of fields on the given obj
@@ -184,31 +181,31 @@ var utils = {
   },
   connSecurity: function (conn) {
     if (!conn.isEncrypted)
-      return 'no-security';
-    if (conn.sasl === 'GSSAPI')
-      return 'Kerberos';
-    return conn.sslProto + '(' + conn.sslCipher + ')';
+      return "no-security";
+    if (conn.sasl === "GSSAPI")
+      return "Kerberos";
+    return conn.sslProto + "(" + conn.sslCipher + ")";
   },
   connAuth: function (conn) {
     if (!conn.isAuthenticated)
-      return 'no-auth';
+      return "no-auth";
     let sasl = conn.sasl;
-    if (sasl === 'GSSAPI')
-      sasl = 'Kerberos';
-    else if (sasl === 'EXTERNAL')
-      sasl = 'x.509';
-    else if (sasl === 'ANONYMOUS')
-      return 'anonymous-user';
+    if (sasl === "GSSAPI")
+      sasl = "Kerberos";
+    else if (sasl === "EXTERNAL")
+      sasl = "x.509";
+    else if (sasl === "ANONYMOUS")
+      return "anonymous-user";
     if (!conn.user)
       return sasl;
-    return conn.user + '(' + sasl + ')';
+    return conn.user + "(" + sasl + ")";
   },
   connTenant: function (conn) {
     if (!conn.tenant) {
-      return '';
+      return "";
     }
     if (conn.tenant.length > 1)
-      return conn.tenant.replace(/\/$/, '');
+      return conn.tenant.replace(/\/$/, "");
   }
 
 };

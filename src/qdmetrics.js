@@ -14,86 +14,138 @@
  * limitations under the License.
  */
 
-'use strict';
+"use strict";
 
-const register = require('../').register;
+const register = require("../").register;
 
-const Gauge = require('../').Gauge;
-const g = new Gauge({
-  name: 'qdmetrics_acceptedDeliveries',
-  help: 'Sum of accepted deleiveries for all routers in the network',
-  labelNames: ['router']
-});
+const Gauge = require("../").Gauge;
+let gaugeMap = {};
 
-const management = require('./amqp/management');
-const Management = new management('http:');
+const management = require("./amqp/management");
+const Management = new management("http:");
 
-const utils = require('./amqp/utilities');
-const http = require('http');
+const utils = require("./amqp/utilities");
+const http = require("http");
+const server = http.createServer();
 
-let routerId = '';
+const winston = require("winston");
+winston.level = process.env.LOG_LEVEL ? process.env.LOG_LEVEL : "debug";
+require("./logging")();
 
-// TODO: should be loaded from command line or config file
+// the ids of all the routers discovered in the network
+let routerIds = [];
+
+// TODO: should be loaded from command line, environment, or config file
 let scrapePort = 5674;
 let connectOptions = {
-  address: 'localhost',
+  address: "localhost",
   port: 5673,
-  username: '',
-  password: '',
+  username: "",
+  password: "",
   reconnect: true,
-  properties: { app_identifier: 'Prometheus scape handler' }
+  properties: { app_identifier: "Prometheus scape handler" }
 };
-// TODO: which stats to fetch should be defined in config file
-let routerResults = { acceptedDeliveries: -1 };
 
-const server = http.createServer();
 // listen for scrape requests
-server.on('request', async (req, res) => {
-  if (req.url === '/metrics') {
+server.on("request", async (req, res) => {
+  if (req.url === "/metrics") {
     try {
-      routerResults = await getStats();
-      g.set({ router: utils.nameFromId(routerId) }, routerResults.acceptedDeliveries);
-      res.writeHead(200, { 'Content-Type': register.contentType });
+      // get all the statistics for all routers
+      let routerResults = await getStats();
+      // for each entity
+      routerResults.forEach(function (rr, i) {
+        let entity = stats[i].entity;
+        let attributes = stats[i].attributes;
+        // for each router
+        rr.forEach(function (r, j) {
+          let router = utils.nameFromId(routerIds[j]);
+          // for each record returned
+          r.response.results.forEach(function (result) {
+            let o = utils.flatten(r.response.attributeNames, result);
+            // for each attribute (statistic) requested
+            attributes.forEach(function (attr) {
+              setGauge(router, entity, attr, o);
+            });
+          });
+        });
+      });
+      res.writeHead(200, { "Content-Type": register.contentType });
       res.end(register.metrics());
-      console.log('handled prometheus scape request at /metrics')
+      winston.info("handled prometheus scape request at /metrics");
     } catch (e) {
-      console.log(e);
+      winston.debug(e);
     }
   }
 });
 
+// startup
+// get stats file and connect to the router network
+const stats = require("../stats").stats;
 // connect to a router
 Management.connection.connect(connectOptions).then(function () {
   // we need fetch and cache the schema before making any queries
   // to get the fully qualified entity names
-  console.log(`connected to router at ${connectOptions.address}:${connectOptions.port}`)
+  winston.info(`connected to router at ${connectOptions.address}:${connectOptions.port}`);
   Management.getSchema()
     .then(function () {
-      routerId = Management.topology.getConnectedNode();
-      console.log(`connected to router named "${utils.nameFromId(routerId)}"`);
-      server.listen(scrapePort);
+      // initialize the gauges after the schema is available
+      initGauges();
+      Management.topology.getNodeList()
+        .then(function (results) {
+          routerIds = results;
+          let ids = routerIds.map(function (r) {
+            return utils.nameFromId(r);
+          });
+          winston.info(`found router(s) ${ids}`);
+          server.listen(scrapePort);
+        });
     }, function (e) {
-      console.log(e);
+      winston.debug(e);
     });
 }, function (e) {
-  console.log(e);
+  winston.debug(e);
 });
 
+function initGauges() {
+  stats.forEach(function (stat) {
+    // always keep stats by which router they came from
+    let labels = ["router"];
+    // also keep stats by the entity
+    if (stat.entity !== "router") {
+      labels.push(stat.alias ? stat.alias : stat.entity);
+    }
+    // create a gauge per attribute
+    stat.attributes.forEach((attr) => {
+      let gauge = new Gauge({
+        name: `qdmetrics_${attr}`,
+        help: Management.schema().entityTypes[stat.entity].attributes[attr].description,
+        labelNames: labels
+      });
+      gauge.alias = stat.alias;
+      gaugeMap[`${stat.entity}.${attr}`] = gauge;
+    });
+  });
+}
+function setGauge(router, entity, attr, result) {
+  let gauge = gaugeMap[`${entity}.${attr}`];
+  let label = { router: router };
+  if (result.name)
+    label[gauge.alias ? gauge.alias : entity] = result.name;
+  gauge.set(label, result[attr]);
+}
 // send a management query to the connected router to get the metrics
 function getStats() {
   return new Promise(function (resolve, reject) {
-    const entity = 'router',
-      attributes = [];
-    try {
-      Management.connection.sendQuery(routerId, entity, attributes)
-        .then(function (r) {
-          let response = r.response;
-          resolve(utils.flatten(response.attributeNames, response.results[0]));
-        }, function (e) {
-          reject(e);
-        });
-    } catch (e) {
-      reject(e);
-    }
-  })
+    Promise.all(stats.map((s) => {
+      let attrs = s.attributes.slice();
+      if (attrs.indexOf("name") === -1)
+        attrs.push("name");
+      return Management.topology.get(routerIds, s.entity, attrs);
+    }))
+      .then(function (allResults) {
+        resolve(allResults);
+      }, function (e) {
+        reject(e);
+      });
+  });
 }
