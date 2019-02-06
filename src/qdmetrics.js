@@ -35,16 +35,8 @@ require("./logging")();
 // the ids of all the routers discovered in the network
 let routerIds = [];
 
-// TODO: should be loaded from command line, environment, or config file
-let scrapePort = 5674;
-let connectOptions = {
-  address: "localhost",
-  port: 5673,
-  username: "",
-  password: "",
-  reconnect: true,
-  properties: { app_identifier: "Prometheus scape handler" }
-};
+// TODO: should be loaded from command line > environment > config file
+let options = require("./options")(winston);
 
 // listen for scrape requests
 server.on("request", async (req, res) => {
@@ -82,10 +74,10 @@ server.on("request", async (req, res) => {
 // get stats file and connect to the router network
 const stats = require("../stats").stats;
 // connect to a router
-Management.connection.connect(connectOptions).then(function () {
+Management.connection.connect(options.connectOptions).then(function () {
   // we need fetch and cache the schema before making any queries
   // to get the fully qualified entity names
-  winston.info(`connected to router at ${connectOptions.address}:${connectOptions.port}`);
+  winston.info(`connected to router at ${options.connectOptions.address}:${options.connectOptions.port}`);
   Management.getSchema()
     .then(function () {
       // initialize the gauges after the schema is available
@@ -97,7 +89,7 @@ Management.connection.connect(connectOptions).then(function () {
             return utils.nameFromId(r);
           });
           winston.info(`found router(s) ${ids}`);
-          server.listen(scrapePort);
+          server.listen(options["scrape-port"]);
         });
     }, function (e) {
       winston.debug(e);
