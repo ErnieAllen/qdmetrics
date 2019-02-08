@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+const utils = require("./utilities");
 class Topology {
   constructor(connectionManager) {
     this.connection = connectionManager;
@@ -43,7 +44,27 @@ class Topology {
         }).bind(this));
     }).bind(this));
   }
-
+  getEdgeList(ids) {
+    return new Promise((function (resolve, reject) {
+      this.get(ids, "connection", ["container", "role"])
+        .then(function (results) {
+          let edges = [];
+          // for each entity
+          results.forEach(function (r) {
+            // for each record returned
+            r.response.results.forEach(function (result) {
+              let connection = utils.flatten(r.response.attributeNames, result);
+              if (connection.role === "edge") {
+                edges.push(utils.idFromName(connection.container, "_edge"));
+              }
+            });
+          });
+          resolve(edges);
+        }, function (e) {
+          reject(e);
+        });
+    }).bind(this));
+  }
   get(ids, entity, attributes) {
     return new Promise((function (resolve, reject) {
       Promise.all(ids.map((id) => this.connection.sendQuery(id, entity, attributes)))

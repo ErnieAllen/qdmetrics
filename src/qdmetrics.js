@@ -85,11 +85,18 @@ Management.connection.connect(options.connectOptions).then(function () {
       Management.topology.getNodeList()
         .then(function (results) {
           routerIds = results;
-          let ids = routerIds.map(function (r) {
-            return utils.nameFromId(r);
-          });
-          winston.info(`found router(s) ${ids}`);
-          server.listen(options["scrape-port"]);
+          Management.topology.getEdgeList(routerIds)
+            .then(function (edges) {
+              winston.info(`found ${edges.length} edge router(s)`);
+              routerIds = routerIds.concat(edges);
+              let ids = routerIds.map(function (r) {
+                return utils.nameFromId(r);
+              });
+              winston.info(`found router(s) ${ids}`);
+              server.listen(options["scrape-port"]);
+            }, function (e) {
+              winston.error(e);
+            });
         });
     }, function (e) {
       winston.debug(e);
