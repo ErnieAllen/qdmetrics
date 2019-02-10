@@ -1,11 +1,24 @@
-const winston = require("winston");
+const { createLogger, format, transports } = require("winston");
+const { combine, timestamp, label, printf } = format;
 
-module.exports = function () {
+const myFormat = printf(({ level, message, label, timestamp }) => {
+  return `${timestamp} ${level}: ${message}`;
+});
 
-  const files = new winston.transports.File({ filename: "qdmetrics.log" });
-  const myconsole = new winston.transports.Console();
+const logger = createLogger({
+  format: combine(
+    timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
+    myFormat
+  ),
+  transports: [new transports.File({ filename: "qdmetrics.log" }), new transports.Console()]
+});
 
-  winston.add(myconsole);
-  winston.add(files);
+logger.level = process.env.LOG_LEVEL ? process.env.LOG_LEVEL : "debug";
 
-};
+module.exports = logger;
+
+
+
+
+
+
