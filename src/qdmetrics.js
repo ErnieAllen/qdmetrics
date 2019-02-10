@@ -28,9 +28,7 @@ const utils = require("./amqp/utilities");
 const http = require("http");
 const server = http.createServer();
 
-const winston = require("winston");
-winston.level = process.env.LOG_LEVEL ? process.env.LOG_LEVEL : "debug";
-require("./logging")();
+const winston = require("./logging");
 
 // the ids of all the routers discovered in the network
 let routerIds = [];
@@ -63,7 +61,13 @@ server.on("request", async (req, res) => {
       });
       res.writeHead(200, { "Content-Type": register.contentType });
       res.end(register.metrics());
-      winston.info("handled prometheus scape request at /metrics");
+      // start request to get new topology 
+      getTopology()
+        .then(function (ids) {
+          routerIds = ids;
+          winston.verbose("updated router and edge-router list");
+        });
+      winston.info("handled request at /metrics");
     } catch (e) {
       winston.debug(e);
     }
@@ -82,21 +86,15 @@ Management.connection.connect(options.connectOptions).then(function () {
     .then(function () {
       // initialize the gauges after the schema is available
       initGauges();
-      Management.topology.getNodeList()
-        .then(function (results) {
-          routerIds = results;
-          Management.topology.getEdgeList(routerIds)
-            .then(function (edges) {
-              winston.info(`found ${edges.length} edge router(s)`);
-              routerIds = routerIds.concat(edges);
-              let ids = routerIds.map(function (r) {
-                return utils.nameFromId(r);
-              });
-              winston.info(`found router(s) ${ids}`);
-              server.listen(options["scrape-port"]);
-            }, function (e) {
-              winston.error(e);
-            });
+      getTopology()
+        .then(function (ids) {
+          routerIds = ids;
+          let names = routerIds.map(function (r) {
+            return utils.nameFromId(r);
+          });
+          winston.info(`found router(s) ${names}`);
+          // start up the scrape request handler after everything is done
+          server.listen(options["scrape-port"]);
         });
     }, function (e) {
       winston.debug(e);
@@ -132,6 +130,24 @@ function setGauge(router, entity, attr, result) {
     label[gauge.alias ? gauge.alias : entity] = result.name;
   gauge.set(label, result[attr]);
 }
+
+// get the list of routers and edge-routers
+function getTopology() {
+  return new Promise((function (resolve, reject) {
+    Management.topology.getNodeList()
+      .then(function (results) {
+        let routerIds = results;
+        Management.topology.getEdgeList(routerIds)
+          .then(function (edges) {
+            routerIds = routerIds.concat(edges);
+            resolve(routerIds);
+          }, function (e) {
+            reject(e);
+          });
+      });
+  }));
+}
+
 // send a management query to the connected router to get the metrics
 function getStats() {
   return new Promise(function (resolve, reject) {
