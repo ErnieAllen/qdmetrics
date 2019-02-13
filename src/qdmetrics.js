@@ -69,10 +69,22 @@ server.on("request", async (req, res) => {
         });
       winston.info("handled request at /metrics");
     } catch (e) {
-      winston.debug(e);
+      if (!Management.connection.is_connected())
+        winston.error("no connection to router");
+      else
+        winston.debug(`unable to get metrics: ${e}`);
     }
   }
 });
+
+function onConnectionOpened() {
+  winston.info("connection reopened");
+  Management.connection.addDisconnectAction(onConnectionDropped);
+}
+function onConnectionDropped() {
+  winston.error("connection dropped");
+  Management.connection.addConnectAction(onConnectionOpened);
+}
 
 // startup
 // get stats file and connect to the router network
@@ -81,6 +93,7 @@ const stats = require("../stats").stats;
 Management.connection.connect(options.connectOptions).then(function () {
   // we need fetch and cache the schema before making any queries
   // to get the fully qualified entity names
+  Management.connection.addDisconnectAction(onConnectionDropped);
   winston.info(`connected to router at ${options.connectOptions.address}:${options.connectOptions.port}`);
   Management.getSchema()
     .then(function () {
@@ -89,12 +102,10 @@ Management.connection.connect(options.connectOptions).then(function () {
       getTopology()
         .then(function (ids) {
           routerIds = ids;
-          let names = routerIds.map(function (r) {
-            return utils.nameFromId(r);
-          });
+          let names = routerIds.map((r) => utils.nameFromId(r));
           winston.info(`found router(s) ${names}`);
           // start up the scrape request handler after everything is done
-          server.listen(options["scrape-port"]);
+          server.listen(options["scrape"]);
         });
     }, function (e) {
       winston.debug(e);
