@@ -17,34 +17,41 @@
 "use strict";
 
 // Prometheus client objects
-const register = require("../").register;
-const Gauge = require("../").Gauge;
+const register = require("./").register;
+const Gauge = require("./").Gauge;
 let gaugeMap = {};
 
 // Rhea wrapper
-const management = require("./amqp/management");
+const management = require("./src/amqp/management");
 const Management = new management("http:");
-const utils = require("./amqp/utilities");
+const utils = require("./src/amqp/utilities");
 
 // Nodejs http server to listen for scrape requests
 const http = require("http");
 const server = http.createServer();
 
 // logging
-const winston = require("./logging");
+const winston = require("./src/logging");
 // connection options: command line > environment > config file
-let options = require("./options")(winston);
+let options = require("./src/options")(winston);
 // show current options
 options.log();
 
 // get object containing all the router statistics to query
-const stats = require("../stats").stats;
+const stats = require("./stats").stats;
 
 // the ids of all the routers to be queried
 let routerIds = [];
+// setInterval handle to periodically refresh the list of routers
+let refreshTopologyHandle = null;
 
 // startup
 // connect to a router
+winston.info(`attempting to connect to ${options.connectOptions.address}:${options.connectOptions.port}`);
+Management.connection.addDisconnectAction(() => {
+  winston.info("connection failed... retrying");
+});
+
 Management.connection.connect(options.connectOptions).then(function () {
   // we need fetch and cache the schema before making any queries
   // to get the fully qualified entity names
@@ -63,7 +70,7 @@ Management.connection.connect(options.connectOptions).then(function () {
           // start up the scrape request handler after everything is done
           server.listen(options["scrape"]);
           // peridocally update the list of routers
-          setInterval(refreshTopology, options.refresh * 1000);
+          refreshTopologyHandle = setInterval(refreshTopology, options.refresh * 1000);
         });
     }, function (e) {
       winston.debug(e);
@@ -163,10 +170,15 @@ function getStats() {
 // log when router disconnects or reconnects
 function onConnectionOpened() {
   winston.info("connection reopened");
+  // get new topology now
+  setTimeout(refreshTopology, 1000);
+  // start getting new topology periodically
+  refreshTopologyHandle = setInterval(refreshTopology, options.refresh * 1000);
   Management.connection.addDisconnectAction(onConnectionDropped);
 }
 function onConnectionDropped() {
   winston.error("connection dropped");
+  clearInterval(refreshTopologyHandle);
   Management.connection.addConnectAction(onConnectionOpened);
 }
 
@@ -176,9 +188,11 @@ function refreshTopology() {
   getTopology()
     .then(function (ids) {
       routerIds = ids;
-      winston.verbose("updated router and edge-router list");
+      const names = routerIds.map((r) => utils.nameFromId(r));
+      winston.verbose(`updated router list ${names}`);
     }, function (e) {
-      winston.debug(`unable to refresh router list: ${e}`);
+      winston.debug(`unable to refresh router list: 
+        ${!Management.connection.is_connected() ? "not connected" : e}`);
     });
 }
 // listen for scrape requests
@@ -208,9 +222,12 @@ server.on("request", async (req, res) => {
       res.end(register.metrics());
       winston.info("handled request at /metrics");
     } catch (e) {
-      if (!Management.connection.is_connected())
+      // service not available
+      res.writeHead(503);
+      res.end();
+      if (!Management.connection.is_connected()) {
         winston.error("no connection to router");
-      else
+      } else
         winston.debug(`unable to get metrics: ${e}`);
     }
   }
