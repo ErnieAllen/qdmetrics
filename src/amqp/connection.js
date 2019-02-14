@@ -15,9 +15,9 @@
  */
 /* global Promise */
 
-const rhea = require('rhea');
-const Correlator = require('./correlator.js');
-var WebSocket = require('ws');
+const rhea = require("rhea");
+const Correlator = require("./correlator.js");
+var WebSocket = require("ws");
 
 class ConnectionManager {
   constructor(protocol) {
@@ -35,7 +35,7 @@ class ConnectionManager {
       this.correlator.resolve(context);
     }).bind(this);
     this.on_disconnected = (function () {
-      this.errorText = 'Disconnected';
+      this.errorText = "Disconnected";
       this.executeDisconnectActions(this.errorText);
     }).bind(this);
     this.on_connection_open = (function () {
@@ -43,8 +43,8 @@ class ConnectionManager {
     }).bind(this);
   }
   versionCheck(minVer) {
-    var verparts = this.version.split('.');
-    var minparts = minVer.split('.');
+    var verparts = this.version.split(".");
+    var minparts = minVer.split(".");
     try {
       for (var i = 0; i < minparts.length; ++i) {
         if (parseInt(minVer[i] > parseInt(verparts[i])))
@@ -57,26 +57,26 @@ class ConnectionManager {
     return true;
   }
   addConnectAction(action) {
-    if (typeof action === 'function') {
+    if (typeof action === "function") {
       this.delConnectAction(action);
       this.connectActions.push(action);
     }
   }
   addDisconnectAction(action) {
-    if (typeof action === 'function') {
+    if (typeof action === "function") {
       this.delDisconnectAction(action);
       this.disconnectActions.push(action);
     }
   }
   delConnectAction(action) {
-    if (typeof action === 'function') {
+    if (typeof action === "function") {
       var index = this.connectActions.indexOf(action);
       if (index >= 0)
         this.connectActions.splice(index, 1);
     }
   }
   delDisconnectAction(action) {
-    if (typeof action === 'function') {
+    if (typeof action === "function") {
       var index = this.disconnectActions.indexOf(action);
       if (index >= 0)
         this.disconnectActions.splice(index, 1);
@@ -105,14 +105,11 @@ class ConnectionManager {
     this.disconnectActions = [];
   }
   on(eventType, fn) {
-    if (eventType === 'connected') {
+    if (eventType === "connected") {
       this.addConnectAction(fn);
     }
-    else if (eventType === 'disconnected') {
+    else if (eventType === "disconnected") {
       this.addDisconnectAction(fn);
-    }
-    else {
-      console.log('unknown event type ' + eventType);
     }
   }
   setSchema(schema) {
@@ -141,25 +138,25 @@ class ConnectionManager {
       var timeout = options.timeout || 10000;
       // set a timer in case the setup takes too long
       var giveUp = (function () {
-        this.connection.removeListener('receiver_open', receiver_open);
-        this.connection.removeListener('sendable', sendable);
-        this.errorText = 'timed out creating senders and receivers';
+        this.connection.removeListener("receiver_open", receiver_open);
+        this.connection.removeListener("sendable", sendable);
+        this.errorText = "timed out creating senders and receivers";
         reject(Error(this.errorText));
       }).bind(this);
       var timer = setTimeout(giveUp, timeout);
       // register an event hander for when the setup is complete
       var sendable = (function (context) {
         clearTimeout(timer);
-        this.version = this.connection.properties ? this.connection.properties.version : '0.1.0';
+        this.version = this.connection.properties ? this.connection.properties.version : "0.1.0";
         // in case this connection dies
-        rhea.on('disconnected', this.on_disconnected);
+        rhea.on("disconnected", this.on_disconnected);
         // in case this connection dies and is then reconnected automatically
-        rhea.on('connection_open', this.on_connection_open);
+        rhea.on("connection_open", this.on_connection_open);
         // receive messages here
-        this.connection.on('message', this.on_message);
+        this.connection.on("message", this.on_message);
         resolve(context);
       }).bind(this);
-      this.connection.once('sendable', sendable);
+      this.connection.once("sendable", sendable);
       // Now actually createt the sender and receiver.
       // register an event handler for when the receiver opens
       var receiver_open = (function () {
@@ -169,7 +166,7 @@ class ConnectionManager {
         else
           this.sender = this.connection.open_sender();
       }).bind(this);
-      this.connection.once('receiver_open', receiver_open);
+      this.connection.once("receiver_open", receiver_open);
       // create a dynamic receiver
       this.receiver = this.connection.open_receiver({ source: { dynamic: true } });
     }).bind(this));
@@ -191,7 +188,7 @@ class ConnectionManager {
             finishConnecting.call(this);
           }).bind(this), (function () {
             // connect failed or timed out
-            this.errorText = 'Unable to connect';
+            this.errorText = "Unable to connect";
             this.executeDisconnectActions(this.errorText);
             reject(Error(this.errorText));
           }).bind(this));
@@ -208,48 +205,48 @@ class ConnectionManager {
   // if the connection attempt fails or times out, reject the promise regardless of options.test
   do_connect(options, callback) {
     return new Promise((function (resolve, reject) {
-      var timeout = options.timeout || 10000;
+      var timeout = options.timeout || 10000000;
       var reconnect = options.reconnect || false; // in case options.reconnect is undefined
-      var baseAddress = options.address + ':' + options.port;
+      var baseAddress = options.address + ":" + options.port;
       if (options.linkRouteAddress) {
-        baseAddress += ('/' + options.linkRouteAddress);
+        baseAddress += ("/" + options.linkRouteAddress);
       }
-      var wsprotocol = this.protocol === 'https:' ? 'wss' : 'ws';
+      var wsprotocol = this.protocol === "https:" ? "wss" : "ws";
       if (this.connection) {
         delete this.connection;
         this.connection = null;
       }
       var ws = rhea.websocket_connect(WebSocket);
       var c = {
-        connection_details: new ws(wsprotocol + '://' + baseAddress, ['binary']),
+        connection_details: new ws(wsprotocol + "://" + baseAddress, ["binary"]),
         reconnect: reconnect,
-        properties: options.properties || { console_identifier: 'Dispatch console' }
+        properties: options.properties || { console_identifier: "Dispatch console" }
       };
       if (options.hostname)
         c.hostname = options.hostname;
-      if (options.username && options.username !== '') {
+      if (options.username && options.username !== "") {
         c.username = options.username;
       }
-      if (options.password && options.password !== '') {
+      if (options.password && options.password !== "") {
         c.password = options.password;
       }
       // set a timeout
-      var disconnected = (function () {
+      var onDisconnected = (function () {
         clearTimeout(timer);
-        rhea.removeListener('disconnected', disconnected);
-        rhea.removeListener('connection_open', connection_open);
+        rhea.removeListener("disconnected", onDisconnected);
+        rhea.removeListener("connection_open", connection_open);
         this.connection = null;
-        var rej = 'failed to connect';
+        var rej = "failed to connect";
         if (callback)
           callback({ error: rej });
         reject(Error(rej));
       }).bind(this);
-      var timer = setTimeout(disconnected, timeout);
+      var timer = setTimeout(onDisconnected, timeout);
       // the event handler for when the connection opens
       var connection_open = (function (context) {
         clearTimeout(timer);
         // prevent future disconnects from calling reject
-        rhea.removeListener('disconnected', disconnected);
+        rhea.removeListener("disconnected", onDisconnected);
         // we were just checking. we don't really want a connection
         if (options.test) {
           context.connection.close();
@@ -263,19 +260,24 @@ class ConnectionManager {
         resolve(res);
       }).bind(this);
       // register an event handler for when the connection opens
-      rhea.once('connection_open', connection_open);
+      rhea.once("connection_open", connection_open);
       // register an event handler for if the connection fails to open
-      rhea.once('disconnected', disconnected);
+      rhea.once("disconnected", onDisconnected);
       // attempt the connection
-      this.connection = rhea.connect(c);
+      try {
+        this.connection = rhea.connect(c);
+      }
+      catch (e) {
+        onDisconnected();
+      }
     }).bind(this));
   }
   sendMgmtQuery(operation, to) {
-    to = to || '/$management';
+    to = to || "/$management";
     return this.send([], to, operation);
   }
   sendQuery(toAddr, entity, attrs, operation) {
-    operation = operation || 'QUERY';
+    operation = operation || "QUERY";
     var fullAddr = this._fullAddr(toAddr);
     var body = { attributeNames: attrs || [] };
     return this.send(body, fullAddr, operation, this.schema.entityTypes[entity].fullyQualifiedType);
@@ -283,8 +285,8 @@ class ConnectionManager {
   send(body, to, operation, entityType) {
     var application_properties = {
       operation: operation,
-      type: 'org.amqp.management',
-      name: 'self'
+      type: "org.amqp.management",
+      name: "self"
     };
     if (entityType)
       application_properties.entityType = entityType;
@@ -313,6 +315,11 @@ class ConnectionManager {
     var _correlationId = this.correlator.corr();
     var self = this;
     return new Promise(function (resolve, reject) {
+      if (!self.receiver || !self.receiver.remote ||
+        !self.receiver.remote.attach || !self.receiver.remote.attach.source) {
+        reject("not connected");
+        return;
+      }
       self.correlator.register(_correlationId, resolve, reject);
       self.sender.send({
         body: body,
@@ -324,9 +331,9 @@ class ConnectionManager {
     });
   }
   _fullAddr(toAddr) {
-    var toAddrParts = toAddr.split('/');
+    var toAddrParts = toAddr.split("/");
     toAddrParts.shift();
-    var fullAddr = toAddrParts.join('/');
+    var fullAddr = toAddrParts.join("/");
     return fullAddr;
   }
   availableQeueuDepth() {
@@ -337,7 +344,7 @@ class ConnectionManager {
 class ConnectionException {
   constructor(message) {
     this.message = message;
-    this.name = 'ConnectionException';
+    this.name = "ConnectionException";
   }
 }
 

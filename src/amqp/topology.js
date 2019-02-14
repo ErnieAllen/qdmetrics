@@ -41,7 +41,9 @@ class Topology {
           } else {
             reject("GET-MGMT-NODES returned non-array");
           }
-        }).bind(this));
+        }).bind(this), function (e) {
+          reject(e);
+        });
     }).bind(this));
   }
   getEdgeList(ids) {

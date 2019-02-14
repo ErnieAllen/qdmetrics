@@ -16,26 +16,171 @@
 
 "use strict";
 
+// Prometheus client objects
 const register = require("../").register;
-
 const Gauge = require("../").Gauge;
 let gaugeMap = {};
 
+// Rhea wrapper
 const management = require("./amqp/management");
 const Management = new management("http:");
-
 const utils = require("./amqp/utilities");
+
+// Nodejs http server to listen for scrape requests
 const http = require("http");
 const server = http.createServer();
 
+// logging
 const winston = require("./logging");
+// connection options: command line > environment > config file
+let options = require("./options")(winston);
+// show current options
+options.log();
 
-// the ids of all the routers discovered in the network
+// get object containing all the router statistics to query
+const stats = require("../stats").stats;
+
+// the ids of all the routers to be queried
 let routerIds = [];
 
-// TODO: should be loaded from command line > environment > config file
-let options = require("./options")(winston);
+// startup
+// connect to a router
+Management.connection.connect(options.connectOptions).then(function () {
+  // we need fetch and cache the schema before making any queries
+  // to get the fully qualified entity names
+  Management.connection.addDisconnectAction(onConnectionDropped);
+  winston.info(`connected to router at ${options.connectOptions.address}:${options.connectOptions.port}`);
+  Management.getSchema()
+    .then(function () {
+      // initialize the gauges after the schema is available
+      initGauges();
+      // get the list of routers and edge-routers
+      getTopology()
+        .then(function (ids) {
+          routerIds = ids;
+          const names = routerIds.map((r) => utils.nameFromId(r));
+          winston.info(`found router(s) ${names}`);
+          // start up the scrape request handler after everything is done
+          server.listen(options["scrape"]);
+          // peridocally update the list of routers
+          setInterval(refreshTopology, options.refresh * 1000);
+        });
+    }, function (e) {
+      winston.debug(e);
+    });
+}, function (e) {
+  winston.debug(e);
+});
 
+// called after we are connected to a router and have a schema
+// Create the prometheus Gauges for each router statistic
+function initGauges() {
+  stats.forEach(function (stat) {
+    // always keep stats by which router they came from
+    let labels = ["router"];
+    // also keep stats by the entity
+    if (stat.entity !== "router") {
+      labels.push(stat.alias ? stat.alias : stat.entity);
+    }
+    // create a gauge per attribute
+    stat.attributes.forEach((attr) => {
+      let gauge = new Gauge({
+        name: `qdmetrics_${attr}`,
+        help: Management.schema().entityTypes[stat.entity].attributes[attr].description,
+        labelNames: labels
+      });
+      gauge.alias = stat.alias;
+      gaugeMap[`${stat.entity}.${attr}`] = gauge;
+    });
+  });
+}
+
+// called each scrape request for each statistic
+// Set the statistic value for each guage
+function setGauge(router, entity, attr, result) {
+  let gauge = gaugeMap[`${entity}.${attr}`];
+  let label = { router: router };
+  if (result.name)
+    label[gauge.alias ? gauge.alias : entity] = result.name;
+  gauge.set(label, result[attr]);
+}
+
+// get the list of routers and edge-routers
+function getTopology() {
+  return new Promise((function (resolve, reject) {
+    // if we only want to get stats from the router to which we are connected
+    if (options.local) {
+      let local = [Management.topology.getConnectedNode()];
+      // if we also want all edge routers that are connected to the router
+      if (options.edge) {
+        Management.topology.getEdgeList(local)
+          .then(function (edges) {
+            resolve(local.concat(edges));
+          }, function (e) {
+            reject(e);
+          });
+      } else {
+        resolve(local);
+      }
+      return;
+    }
+    Management.topology.getNodeList()
+      .then(function (results) {
+        let routerIds = results;
+        if (options.edge) {
+          Management.topology.getEdgeList(routerIds)
+            .then(function (edges) {
+              routerIds = routerIds.concat(edges);
+              resolve(routerIds);
+            }, function (e) {
+              reject(e);
+            });
+        } else
+          resolve(routerIds);
+      }, function (e) {
+        reject(e);
+      });
+  }));
+}
+
+// send a management query to the connected router to get the metrics for all routers
+function getStats() {
+  return new Promise(function (resolve, reject) {
+    Promise.all(stats.map((s) => {
+      let attrs = s.attributes.slice();
+      if (attrs.indexOf("name") === -1)
+        attrs.push("name");
+      return Management.topology.get(routerIds, s.entity, attrs);
+    }))
+      .then(function (allResults) {
+        resolve(allResults);
+      }, function (e) {
+        reject(e);
+      });
+  });
+}
+
+// log when router disconnects or reconnects
+function onConnectionOpened() {
+  winston.info("connection reopened");
+  Management.connection.addDisconnectAction(onConnectionDropped);
+}
+function onConnectionDropped() {
+  winston.error("connection dropped");
+  Management.connection.addConnectAction(onConnectionOpened);
+}
+
+// called periodically to refresh the list of routers
+function refreshTopology() {
+  // start request to get new topology 
+  getTopology()
+    .then(function (ids) {
+      routerIds = ids;
+      winston.verbose("updated router and edge-router list");
+    }, function (e) {
+      winston.debug(`unable to refresh router list: ${e}`);
+    });
+}
 // listen for scrape requests
 server.on("request", async (req, res) => {
   if (req.url === "/metrics") {
@@ -61,12 +206,6 @@ server.on("request", async (req, res) => {
       });
       res.writeHead(200, { "Content-Type": register.contentType });
       res.end(register.metrics());
-      // start request to get new topology 
-      getTopology()
-        .then(function (ids) {
-          routerIds = ids;
-          winston.verbose("updated router and edge-router list");
-        });
       winston.info("handled request at /metrics");
     } catch (e) {
       if (!Management.connection.is_connected())
@@ -76,102 +215,3 @@ server.on("request", async (req, res) => {
     }
   }
 });
-
-function onConnectionOpened() {
-  winston.info("connection reopened");
-  Management.connection.addDisconnectAction(onConnectionDropped);
-}
-function onConnectionDropped() {
-  winston.error("connection dropped");
-  Management.connection.addConnectAction(onConnectionOpened);
-}
-
-// startup
-// get stats file and connect to the router network
-const stats = require("../stats").stats;
-// connect to a router
-Management.connection.connect(options.connectOptions).then(function () {
-  // we need fetch and cache the schema before making any queries
-  // to get the fully qualified entity names
-  Management.connection.addDisconnectAction(onConnectionDropped);
-  winston.info(`connected to router at ${options.connectOptions.address}:${options.connectOptions.port}`);
-  Management.getSchema()
-    .then(function () {
-      // initialize the gauges after the schema is available
-      initGauges();
-      getTopology()
-        .then(function (ids) {
-          routerIds = ids;
-          let names = routerIds.map((r) => utils.nameFromId(r));
-          winston.info(`found router(s) ${names}`);
-          // start up the scrape request handler after everything is done
-          server.listen(options["scrape"]);
-        });
-    }, function (e) {
-      winston.debug(e);
-    });
-}, function (e) {
-  winston.debug(e);
-});
-
-function initGauges() {
-  stats.forEach(function (stat) {
-    // always keep stats by which router they came from
-    let labels = ["router"];
-    // also keep stats by the entity
-    if (stat.entity !== "router") {
-      labels.push(stat.alias ? stat.alias : stat.entity);
-    }
-    // create a gauge per attribute
-    stat.attributes.forEach((attr) => {
-      let gauge = new Gauge({
-        name: `qdmetrics_${attr}`,
-        help: Management.schema().entityTypes[stat.entity].attributes[attr].description,
-        labelNames: labels
-      });
-      gauge.alias = stat.alias;
-      gaugeMap[`${stat.entity}.${attr}`] = gauge;
-    });
-  });
-}
-function setGauge(router, entity, attr, result) {
-  let gauge = gaugeMap[`${entity}.${attr}`];
-  let label = { router: router };
-  if (result.name)
-    label[gauge.alias ? gauge.alias : entity] = result.name;
-  gauge.set(label, result[attr]);
-}
-
-// get the list of routers and edge-routers
-function getTopology() {
-  return new Promise((function (resolve, reject) {
-    Management.topology.getNodeList()
-      .then(function (results) {
-        let routerIds = results;
-        Management.topology.getEdgeList(routerIds)
-          .then(function (edges) {
-            routerIds = routerIds.concat(edges);
-            resolve(routerIds);
-          }, function (e) {
-            reject(e);
-          });
-      });
-  }));
-}
-
-// send a management query to the connected router to get the metrics
-function getStats() {
-  return new Promise(function (resolve, reject) {
-    Promise.all(stats.map((s) => {
-      let attrs = s.attributes.slice();
-      if (attrs.indexOf("name") === -1)
-        attrs.push("name");
-      return Management.topology.get(routerIds, s.entity, attrs);
-    }))
-      .then(function (allResults) {
-        resolve(allResults);
-      }, function (e) {
-        reject(e);
-      });
-  });
-}
