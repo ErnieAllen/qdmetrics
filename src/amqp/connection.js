@@ -41,6 +41,7 @@ class ConnectionManager {
     this.on_connection_open = (function () {
       this.executeConnectActions();
     }).bind(this);
+    rhea.on("disconnected", this.on_disconnected);
   }
   versionCheck(minVer) {
     var verparts = this.version.split(".");
@@ -173,39 +174,24 @@ class ConnectionManager {
   }
   connect(options) {
     return new Promise((function (resolve, reject) {
-      var finishConnecting = function () {
-        this.createSenderReceiver(options)
-          .then(function (results) {
-            resolve(results);
-          }, function (error) {
-            reject(error);
-          });
-      };
-      if (!this.connection) {
-        options.test = false; // if you didn't want a connection, you should have called testConnect() and not connect()
-        this.do_connect(options)
-          .then((function () {
-            finishConnecting.call(this);
-          }).bind(this), (function () {
-            // connect failed or timed out
-            this.errorText = "Unable to connect";
-            this.executeDisconnectActions(this.errorText);
-            reject(Error(this.errorText));
-          }).bind(this));
-      } else {
-        finishConnecting.call(this);
-      }
+      this.do_connect(options)
+        .then((function () {
+          this.createSenderReceiver(options)
+            .then(function (results) {
+              resolve(results);
+            }, function (error) {
+              reject(error);
+            });
+        }).bind(this));
     }).bind(this));
   }
   getReceiverAddress() {
     return this.receiver.remote.attach.source.address;
   }
   // Try to connect using the options.
-  // if options.test === true -> close the connection if it succeeded and resolve the promise
-  // if the connection attempt fails or times out, reject the promise regardless of options.test
-  do_connect(options, callback) {
-    return new Promise((function (resolve, reject) {
-      var timeout = options.timeout || 10000000;
+  // if the connection attempt fails or times out, reject the promise
+  do_connect(options) {
+    return new Promise((function (resolve) {
       var reconnect = options.reconnect || false; // in case options.reconnect is undefined
       var baseAddress = options.address + ":" + options.port;
       if (options.linkRouteAddress) {
@@ -230,46 +216,15 @@ class ConnectionManager {
       if (options.password && options.password !== "") {
         c.password = options.password;
       }
-      // set a timeout
-      var onDisconnected = (function () {
-        clearTimeout(timer);
-        rhea.removeListener("disconnected", onDisconnected);
-        rhea.removeListener("connection_open", connection_open);
-        this.connection = null;
-        var rej = "failed to connect";
-        if (callback)
-          callback({ error: rej });
-        reject(Error(rej));
-      }).bind(this);
-      var timer = setTimeout(onDisconnected, timeout);
-      // the event handler for when the connection opens
-      var connection_open = (function (context) {
-        clearTimeout(timer);
-        // prevent future disconnects from calling reject
-        rhea.removeListener("disconnected", onDisconnected);
-        // we were just checking. we don't really want a connection
-        if (options.test) {
-          context.connection.close();
-          this.connection = null;
-        }
-        else
-          this.on_connection_open();
-        var res = { context: context };
-        if (callback)
-          callback(res);
-        resolve(res);
-      }).bind(this);
       // register an event handler for when the connection opens
-      rhea.once("connection_open", connection_open);
-      // register an event handler for if the connection fails to open
-      rhea.once("disconnected", onDisconnected);
+      rhea.once("connection_open", (function (context) {
+        this.on_connection_open();
+        var res = { context: context };
+        resolve(res);
+      }).bind(this));
+
       // attempt the connection
-      try {
-        this.connection = rhea.connect(c);
-      }
-      catch (e) {
-        onDisconnected();
-      }
+      this.connection = rhea.connect(c);
     }).bind(this));
   }
   sendMgmtQuery(operation, to) {
