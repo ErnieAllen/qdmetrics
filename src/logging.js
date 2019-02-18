@@ -29,9 +29,22 @@ const logger = createLogger({
   transports: [new transports.File({ filename: "qdmetrics.log" }), new transports.Console()]
 });
 
+const dumper = createLogger({
+  format: printf(({ message }) => { return message; }),
+  transports: [new transports.Console({
+    format: format.combine(
+      format.colorize(),
+      format.simple()
+    )
+  })]
+});
 logger.level = process.env.LOG_LEVEL ? process.env.LOG_LEVEL : "debug";
 
-module.exports = logger;
+module.exports = {
+  logger: logger,
+  dumper: dumper
+};
+
 
 
 

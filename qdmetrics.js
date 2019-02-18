@@ -31,9 +31,13 @@ const http = require("http");
 const server = http.createServer();
 
 // logging
-const winston = require("./src/logging");
+const log = require("./src/logging");
+const winston = log.logger;
 // connection options: command line > environment > config file
-let options = require("./src/options")(winston);
+let options = require("./src/options")(log);
+if (!options)
+  process.exit();
+
 // show current options
 options.log();
 

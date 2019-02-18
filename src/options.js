@@ -104,7 +104,7 @@ class Options {
 
 module.exports = function (logger) {
   // start with defaults
-  const options = new Options(logger, {
+  const options = new Options(logger.logger, {
     scrape: 5674,             // port on which to listen for prometheus scrape requests
     refresh: 60,              // seconds between topology change requests 
     local: false,             // only query router we are connected to
@@ -118,5 +118,44 @@ module.exports = function (logger) {
       properties: { app_identifier: "Prometheus scrape handler" }
     }
   });
+  if (argv["h"] || argv["help"]) {
+    logger.dumper.info(`
+qdmetrics - prometheus client for qpid dispatch router
+    usage: node qdmetrics.js <options>
+
+  Options:
+    -h                  Show this help text 
+    -v                  Show version 
+    -scrape #           Port on which to listen for scape requests [5674]
+    -refresh #          Seconds between calls to refresh router topology [60]
+    -local true|false   Only query the connected router [false]
+    -edge true|false    Query edge routers [true]
+  Connection options:
+    -address            Address of router
+    -port               Http enabled port on which a router is listening [5673]
+    -ssl-certificate    Client SSL certificate (PEM Format)
+    -ssl-key=KEY        Client SSL private key (PEM Format)
+    -ssl-trustfile      Trusted Certificate Authority Database file (PEM
+                        Format)
+    -ssl-password       Certificate password, will be prompted if not
+                        specifed.
+    -ssl-password-file  Certificate password, will be prompted if not
+                        specifed.
+    -sasl-mechanisms    Allowed sasl mechanisms to be supplied during the sasl
+                        handshake.
+    -username           User name for SASL plain authentication
+    -password           Password for SASL plain authentication
+    -sasl-password-file Password for SASL plain authentication
+    -ssl-disable-peer-name-verify
+                        Disables SSL peer name verification. WARNING - This
+                        option is insecure and must not be used in production
+                        environments
+    `);
+    return null;
+  }
+  if (argv["v"] || argv["version"]) {
+    logger.dumper.info(" version 0.0.1");
+    return null;
+  }
   return options;
 };
