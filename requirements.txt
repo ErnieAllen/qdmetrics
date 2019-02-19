@@ -1,0 +1,32 @@
+Requirements
+
+Options
+ - all required options shall have a default
+ - all options shall be overridden using config file, environment, and command line
+   - command line overrides environment which overrides config file
+ - shall have an option to set the port on which to listen for /metrics scrape requests 
+ - shall have an option to report statistics for only the connected router, or report 
+   - statistics for all routers in the mesh
+ - shall have an option to report statistics for edge routers
+ - shall have an option to determine how often the list of routers to query is updated
+   - since routers and edge routers can be added and dropped from a router network,
+   - it is necessary to periodically update the list of routers in the network
+ - shall have an option to cache statistics
+   - normally when a /metrics request is received, the router is queried at that time and the
+   - results are returned. The cache option separates the router queries from the /metrics requests.
+   - If cache=true then a separate polling interval is setup to query the router(s). Then when a /metrics 
+   - request is received, the most recent query results are immediately returned.
+ - shall have an option to determine the polling interval used when cache is true
+ 
+Connect to router
+ - accept address:port of router and connect at start
+ - accept sasl username/password [optional]
+ - accept ssl options [optional]
+ - handle router not available at program start
+ - handle lost connection and reconnect after start
+
+Handle /metrics request
+ - accept port on which to listen for /metrics GET request
+ - shall read config file to determine which statistics to return
+ - shall report statistics per router
+
