@@ -46,8 +46,11 @@ const stats = require("./stats").stats;
 
 // the ids of all the routers to be queried
 let routerIds = [];
+// cached router statistics (if options.cache is true)
+let lastRouterResults;
 // setInterval handle to periodically refresh the list of routers
 let refreshTopologyHandle = null;
+let refreshResultsHandle = null;
 
 // startup
 // connect to a router
@@ -72,7 +75,17 @@ Management.connection.connect(options.connectOptions).then(function () {
           const names = routerIds.map((r) => utils.nameFromId(r));
           winston.info(`found router(s) ${names}`);
           // start up the scrape request handler after everything is done
-          server.listen(options["scrape"]);
+          if (options.cache) {
+            getStats()
+              .then(function (routerResults) {
+                lastRouterResults = routerResults;
+                server.listen(options["scrape"]);
+                refreshResultsHandle = setInterval(pollResults, options.poll * 1000);
+              }, function (e) {
+                winston.debug(e);
+              });
+          } else
+            server.listen(options["scrape"]);
           // peridocally update the list of routers
           refreshTopologyHandle = setInterval(refreshTopology, options.refresh * 1000);
         });
@@ -175,14 +188,17 @@ function getStats() {
 function onConnectionOpened() {
   winston.info("connection reopened");
   // get new topology now
-  setTimeout(refreshTopology, 1000);
+  setTimeout(refreshTopology, 100);
+  setTimeout(pollResults, 100);
   // start getting new topology periodically
   refreshTopologyHandle = setInterval(refreshTopology, options.refresh * 1000);
+  refreshResultsHandle = setInterval(pollResults, options.poll * 1000);
   Management.connection.addDisconnectAction(onConnectionDropped);
 }
 function onConnectionDropped() {
   winston.error("connection dropped");
   clearInterval(refreshTopologyHandle);
+  clearInterval(refreshResultsHandle);
   Management.connection.addConnectAction(onConnectionOpened);
 }
 
@@ -199,14 +215,26 @@ function refreshTopology() {
         ${!Management.connection.is_connected() ? "not connected" : e}`);
     });
 }
+
+function pollResults() {
+  getStats()
+    .then(function (routerResults) {
+      lastRouterResults = routerResults;
+      winston.verbose("refreshed statistics");
+    }, function (e) {
+      winston.debug(`unable to refresh statistics ${e}`);
+    });
+}
+
 // listen for scrape requests
 server.on("request", async (req, res) => {
   if (req.url === "/metrics") {
     try {
       // get all the statistics for all routers
-      let routerResults = await getStats();
+      if (!options.cache)
+        lastRouterResults = await getStats();
       // for each entity
-      routerResults.forEach(function (rr, i) {
+      lastRouterResults.forEach(function (rr, i) {
         let entity = stats[i].entity;
         let attributes = stats[i].attributes;
         // for each router
@@ -222,9 +250,15 @@ server.on("request", async (req, res) => {
           });
         });
       });
-      res.writeHead(200, { "Content-Type": register.contentType });
-      res.end(register.metrics());
-      winston.info("handled request at /metrics");
+      if (!Management.connection.is_connected()) {
+        res.writeHead(503);
+        res.end();
+        winston.error("not connected for /metrics request");
+      } else {
+        res.writeHead(200, { "Content-Type": register.contentType });
+        res.end(register.metrics());
+        winston.info("handled request at /metrics");
+      }
     } catch (e) {
       // service not available
       res.writeHead(503);

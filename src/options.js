@@ -23,6 +23,8 @@ class Options {
     this.refresh = defaults.refresh;
     this.local = defaults.local;
     this.edge = defaults.edge;
+    this.cache = defaults.cache;
+    this.poll = defaults.poll;
     this.connectOptions = defaults.connectOptions;
 
     // set options in the following order
@@ -34,10 +36,12 @@ class Options {
   sanityCheck() {
     // 10 seconds <= refresh <= 24 hours
     this.refresh = Math.min(Math.max(this.refresh, 10), 60 * 60 * 24);
+    this.poll = Math.min(Math.max(this.poll, 1), 60 * 60 * 24);
     this.scrape = Math.min(Math.max(this.scrape, 1), 65535);
     this.connectOptions.port = Math.min(Math.max(this.connectOptions.port, 1), 65535);
     this.local = this.getBoolean(this.local);
     this.edge = this.getBoolean(this.edge);
+    this.cache = this.getBoolean(this.cache);
   }
   getBoolean(value) {
     if (typeof value === "boolean")
@@ -80,6 +84,8 @@ class Options {
     this.refresh = get("refresh") || this.refresh;
     this.local = get("local") || this.local;
     this.edge = get("edge") || this.edge;
+    this.cache = get("cache") || this.cache;
+    this.poll = get("poll") || this.poll;
     ["address", "port", "username", "password",
       "ssl-username", "ssl-password", "ssl-password-file",
       "sasl-mechanisms", "ssl-certificate", "ssl-key",
@@ -107,8 +113,10 @@ module.exports = function (logger) {
   const options = new Options(logger.logger, {
     scrape: 5674,             // port on which to listen for prometheus scrape requests
     refresh: 60,              // seconds between topology change requests 
+    poll: 5,                  // seconds between statistics updates
     local: false,             // only query router we are connected to
     edge: true,               // query edge routers
+    cache: false,             // cache query results
     connectOptions: {         // passed to rhea to connect to router
       address: "localhost",
       port: 5673,
