@@ -45,7 +45,7 @@ listener {
   2. Setting environment variables
   3. On the command line
 
-  <span style="display: inline-block; margin: 1em; padding: 1em; border: 1px solid green; color: black; background-color:#C0FFC0">The command line overrides the environment which overrides the options.json file.</span>
+  **The command line overrides the environment which overrides the options.json file.**
 
   ### 1. options.json
   This is a JSON file with a name/value for each option to be specified. For example:
@@ -77,6 +77,11 @@ listener {
     -refresh #          Seconds between calls to refresh router topology [60]
     -local true|false   Only query the connected router [false]
     -edge true|false    Query edge routers [true]
+    -cache true|false   Cache statistics [false]
+                        When --cache is true, --poll determines frequency of
+                        statistics updates
+    -poll #             Seconds between calls to refresh statistics [5]
+                        Only applies if --cache is true
   Connection options:
     -address            Address of router
     -port               Http enabled port on which a router is listening [5673]

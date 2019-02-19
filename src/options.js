@@ -136,8 +136,10 @@ qdmetrics - prometheus client for qpid dispatch router
     -v                  Show version 
     -scrape #           Port on which to listen for scape requests [5674]
     -refresh #          Seconds between calls to refresh router topology [60]
+    -poll #             Seconds between calls to refresh statistics [5]
     -local true|false   Only query the connected router [false]
     -edge true|false    Query edge routers [true]
+    -cache true|false   Cache statistics and poll seperately from scrape requests [false]
   Connection options:
     -address            Address of router
     -port               Http enabled port on which a router is listening [5673]
