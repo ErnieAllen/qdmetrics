@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/ErnieAllen/qdmetrics#readme",
   "dependencies": {
-    "minimist": "^1.2.0",
+    "minimist": "^1.2.3",
     "prom-client": "^11.5.3",
     "rhea": "^0.3.11",
     "winston": "^3.2.1",
